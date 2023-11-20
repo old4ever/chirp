@@ -34,7 +34,7 @@ export const postsRouter = createTRPCRouter({
     return posts.map((post) => {
       const user = users.find((user) => user.id === post.userId);
 
-      if (!user || !user.username)
+      if (!user?.username)
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "User for post not found",
