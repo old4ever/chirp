@@ -9,7 +9,7 @@ import { api } from "~/utils/api";
 import type { RouterOutputs } from "~/utils/api";
 import Image from "next/image";
 import { LoadingPage } from "~/components/loading";
-import { NextPage } from "next";
+import type { NextPage } from "next";
 import { useState } from "react";
 
 const CreatePostWizard = () => {
