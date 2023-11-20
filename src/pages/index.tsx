@@ -12,6 +12,7 @@ import { LoadingPage, LoadingSpinner } from "~/components/loading";
 import type { NextPage } from "next";
 import { useState } from "react";
 import toast from "react-hot-toast";
+import Link from "next/link";
 
 const CreatePostWizard = () => {
   const { user } = useUser();
@@ -92,10 +93,14 @@ const PostView = (props: PostWithUser) => {
       />
       <div className="flex flex-col">
         <div className="flex gap-1 text-slate-300">
-          <span>{`@${user.username}`}</span>
-          <span className="font-thin">{` · ${dayjs(
-            post.createdAt,
-          ).fromNow()}`}</span>
+          <Link href={`/@${user.username}`}>
+            <span>{`@${user.username}`}</span>
+          </Link>
+          <Link href={`/post/${post.id}`}>
+            <span className="font-thin">{` · ${dayjs(
+              post.createdAt,
+            ).fromNow()}`}</span>
+          </Link>
         </div>
         <span className="text-2xl">{post.content}</span>
       </div>
