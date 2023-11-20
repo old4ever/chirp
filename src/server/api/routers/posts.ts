@@ -8,9 +8,31 @@ import {
   publicProcedure,
 } from "~/server/api/trpc";
 
+const addUsersDataToPosts = async (posts: Post[]) => {
+  const users = (
+    await clerkClient.users.getUserList({
+      userId: posts.map((post) => post.userId),
+      limit: 100,
+    })
+  ).map(filterUserForClient);
+
+  return posts.map((post) => {
+    const user = users.find((user) => user.id === post.userId);
+
+    if (!user?.username)
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "User for post not found",
+      });
+
+    return { post, user: { ...user, username: user.username } };
+  });
+};
+
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { filterUserForClient } from "~/server/helpers/filterUserForClient";
+import type { Post } from "@prisma/client";
 
 // Create a new ratelimiter, that allows 3 requests per 1 minute
 const ratelimit = new Ratelimit({
@@ -26,25 +48,26 @@ export const postsRouter = createTRPCRouter({
       orderBy: [{ createdAt: "desc" }],
     });
 
-    const users = (
-      await clerkClient.users.getUserList({
-        userId: posts.map((post) => post.userId),
-        limit: 100,
-      })
-    ).map(filterUserForClient);
-
-    return posts.map((post) => {
-      const user = users.find((user) => user.id === post.userId);
-
-      if (!user?.username)
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "User for post not found",
-        });
-
-      return { post, user: { ...user, username: user.username } };
-    });
+    return addUsersDataToPosts(posts);
   }),
+
+  getPostsByUserId: publicProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+      }),
+    )
+    .query(({ ctx, input }) =>
+      ctx.db.post
+        .findMany({
+          where: {
+            userId: input.userId,
+          },
+          take: 100,
+          orderBy: [{ createdAt: "desc" }],
+        })
+        .then(addUsersDataToPosts),
+    ),
 
   create: privateProcedure
     .input(
