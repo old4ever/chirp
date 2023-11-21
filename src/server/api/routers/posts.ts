@@ -8,31 +8,40 @@ import {
   publicProcedure,
 } from "~/server/api/trpc";
 
-const addUsersDataToPosts = async (posts: Post[]) => {
+import { Ratelimit } from "@upstash/ratelimit"; // for deno: see above
+import { Redis } from "@upstash/redis";
+import { filterUserForClient } from "~/server/helpers/filterUserForClient";
+import type { Post } from "@prisma/client";
+
+const addUserDataToPosts = async (posts: Post[]) => {
+  const userId = posts.map((post) => post.userId);
   const users = (
     await clerkClient.users.getUserList({
-      userId: posts.map((post) => post.userId),
-      limit: 100,
+      userId: userId,
+      limit: 110,
     })
   ).map(filterUserForClient);
 
   return posts.map((post) => {
     const user = users.find((user) => user.id === post.userId);
 
-    if (!user?.username)
+    if (!user) {
+      console.error("user NOT FOUND", post);
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
-        message: "User for post not found",
+        message: `user for post not found. POST ID: ${post.id}, USER ID: ${post.userId}`,
       });
+    }
 
-    return { post, user: { ...user, username: user.username } };
+    return {
+      post,
+      user: {
+        ...user,
+        username: user.username ?? "(username not found)",
+      },
+    };
   });
 };
-
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
-import { filterUserForClient } from "~/server/helpers/filterUserForClient";
-import type { Post } from "@prisma/client";
 
 // Create a new ratelimiter, that allows 3 requests per 1 minute
 const ratelimit = new Ratelimit({
@@ -42,13 +51,27 @@ const ratelimit = new Ratelimit({
 });
 
 export const postsRouter = createTRPCRouter({
+  getById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const post = await ctx.db.post.findUnique({
+        where: { id: input.id },
+      });
+
+      if (!post) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      return (await addUserDataToPosts([post]))[0];
+    }),
+
   getAll: publicProcedure.query(async ({ ctx }) => {
     const posts = await ctx.db.post.findMany({
       take: 100,
       orderBy: [{ createdAt: "desc" }],
     });
 
-    return addUsersDataToPosts(posts);
+    return addUserDataToPosts(posts);
   }),
 
   getPostsByUserId: publicProcedure
@@ -66,7 +89,7 @@ export const postsRouter = createTRPCRouter({
           take: 100,
           orderBy: [{ createdAt: "desc" }],
         })
-        .then(addUsersDataToPosts),
+        .then(addUserDataToPosts),
     ),
 
   create: privateProcedure
@@ -79,7 +102,6 @@ export const postsRouter = createTRPCRouter({
       const userId = ctx.currentUserId;
 
       const { success } = await ratelimit.limit(userId);
-
       if (!success) throw new TRPCError({ code: "TOO_MANY_REQUESTS" });
 
       const post = await ctx.db.post.create({
