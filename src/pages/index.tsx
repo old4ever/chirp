@@ -60,6 +60,7 @@ const CreatePostWizard = () => {
             userButtonAvatarBox: "h-14 w-14 rounded-full",
           },
         }}
+        afterSignOutUrl={"/"}
       />
       <input
         placeholder="Type some stuff"
